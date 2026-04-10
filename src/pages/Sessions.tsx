@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 
 type Session = {
@@ -11,6 +11,11 @@ type Session = {
   durationMins: number;
 };
 
+type Surah = {
+  id: number;
+  ayahCount: number;
+};
+
 const initialForm = {
   sessionDate: new Date().toISOString().slice(0, 10),
   startSurahId: 1,
@@ -18,12 +23,45 @@ const initialForm = {
   endSurahId: 1,
   endAyah: 7,
   durationMins: 30,
-  memorizedAyahs: 7,
 };
 
 export function SessionsPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [surahs, setSurahs] = useState<Surah[]>([]);
   const [form, setForm] = useState(initialForm);
+
+  const ayahCountMap = useMemo(() => new Map(surahs.map((surah) => [surah.id, surah.ayahCount])), [surahs]);
+
+  const memorizedAyahs = useMemo(() => {
+    const startSurah = Number.isFinite(form.startSurahId) ? form.startSurahId : 1;
+    const endSurah = Number.isFinite(form.endSurahId) ? form.endSurahId : 1;
+    const startAyah = Number.isFinite(form.startAyah) ? form.startAyah : 1;
+    const endAyah = Number.isFinite(form.endAyah) ? form.endAyah : 1;
+
+    const fromSurah = Math.min(startSurah, endSurah);
+    const toSurah = Math.max(startSurah, endSurah);
+    const fromAyah = startSurah <= endSurah ? startAyah : endAyah;
+    const toAyah = startSurah <= endSurah ? endAyah : startAyah;
+
+    if (fromSurah === toSurah) {
+      return Math.max(0, Math.abs(toAyah - fromAyah) + 1);
+    }
+
+    let total = 0;
+    for (let surahId = fromSurah; surahId <= toSurah; surahId += 1) {
+      const ayahCount = ayahCountMap.get(surahId);
+      if (!ayahCount) continue;
+
+      if (surahId === fromSurah) {
+        total += Math.max(0, ayahCount - fromAyah + 1);
+      } else if (surahId === toSurah) {
+        total += Math.max(0, toAyah);
+      } else {
+        total += ayahCount;
+      }
+    }
+    return total;
+  }, [ayahCountMap, form.endAyah, form.endSurahId, form.startAyah, form.startSurahId]);
 
   async function loadSessions() {
     const data = await api<Session[]>("/sessions", { authenticated: true });
@@ -32,6 +70,7 @@ export function SessionsPage() {
 
   useEffect(() => {
     loadSessions().catch(() => null);
+    api<Surah[]>("/surahs", { authenticated: true }).then(setSurahs).catch(() => null);
   }, []);
 
   async function handleSubmit(event: FormEvent) {
@@ -39,7 +78,7 @@ export function SessionsPage() {
     await api("/sessions", {
       method: "POST",
       authenticated: true,
-      body: JSON.stringify(form),
+      body: JSON.stringify({ ...form, memorizedAyahs }),
     });
     setForm(initialForm);
     await loadSessions();
@@ -103,11 +142,7 @@ export function SessionsPage() {
           </label>
           <label>
             Memorized Ayahs
-            <input
-              type="number"
-              value={form.memorizedAyahs}
-              onChange={(event) => setForm({ ...form, memorizedAyahs: Number(event.target.value) })}
-            />
+            <input type="number" value={memorizedAyahs} readOnly />
           </label>
           <button className="primary-button" type="submit">
             Save session
@@ -131,4 +166,3 @@ export function SessionsPage() {
     </div>
   );
 }
-

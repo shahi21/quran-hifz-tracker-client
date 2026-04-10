@@ -45,6 +45,8 @@ type DashboardData = {
   recentActivity: Array<{ id: string; activityDate: string; memorizedAyahs: number; revisedAyahs: number; studyMinutes: number }>;
 };
 
+type ActivityItem = DashboardData["recentActivity"][number];
+
 function dateKeyLocal(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -58,6 +60,16 @@ function shortDow(date: Date) {
 
 function formatGoalLabel(goalType: DashboardData["goals"][number]["goalType"]) {
   return goalType.replaceAll("_", " ").toLowerCase();
+}
+
+function dedupeActivity(items: ActivityItem[]) {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = `${dateKeyLocal(new Date(item.activityDate))}|${item.memorizedAyahs}|${item.revisedAyahs}|${item.studyMinutes}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export function DashboardPage() {
@@ -117,10 +129,68 @@ export function DashboardPage() {
 
   const todayTotals = useMemo(() => {
     const todayKey = dateKeyLocal(new Date());
-    const match = (data?.recentActivity ?? []).find((item) => dateKeyLocal(new Date(item.activityDate)) === todayKey);
-    if (!match) return { ayahs: 0, minutes: 0 };
-    return { ayahs: match.memorizedAyahs + match.revisedAyahs, minutes: match.studyMinutes };
+    const todayItems = dedupeActivity((data?.recentActivity ?? []).filter((item) => dateKeyLocal(new Date(item.activityDate)) === todayKey));
+    if (todayItems.length === 0) return { memorized: 0, revised: 0, minutes: 0, totalAyahs: 0 };
+
+    const memorized = todayItems.reduce((sum, item) => sum + item.memorizedAyahs, 0);
+    const revised = todayItems.reduce((sum, item) => sum + item.revisedAyahs, 0);
+    const minutes = todayItems.reduce((sum, item) => sum + item.studyMinutes, 0);
+    return { memorized, revised, minutes, totalAyahs: memorized + revised };
   }, [data?.recentActivity]);
+
+  const weekTotals = useMemo(() => {
+    const today = new Date();
+    const dayKeys = new Set(
+      Array.from({ length: 7 }).map((_, index) => {
+        const d = new Date(today);
+        d.setDate(today.getDate() - (6 - index));
+        d.setHours(0, 0, 0, 0);
+        return dateKeyLocal(d);
+      }),
+    );
+
+    const items = dedupeActivity((data?.recentActivity ?? []).filter((item) => dayKeys.has(dateKeyLocal(new Date(item.activityDate)))));
+    const memorized = items.reduce((sum, item) => sum + item.memorizedAyahs, 0);
+    const revised = items.reduce((sum, item) => sum + item.revisedAyahs, 0);
+    const minutes = items.reduce((sum, item) => sum + item.studyMinutes, 0);
+    return { memorized, revised, minutes, totalAyahs: memorized + revised };
+  }, [data?.recentActivity]);
+
+  const activityList = useMemo(() => dedupeActivity(data?.recentActivity ?? []), [data?.recentActivity]);
+
+  const monthSeries = useMemo(() => {
+    const today = new Date();
+    const dayKeys = Array.from({ length: 30 }).map((_, index) => {
+      const d = new Date(today);
+      d.setDate(today.getDate() - (29 - index));
+      d.setHours(0, 0, 0, 0);
+      return d;
+    });
+
+    const map = new Map<string, { ayahs: number; minutes: number }>();
+    for (const item of data?.monthlyProgress ?? []) {
+      const d = new Date(item.date);
+      map.set(dateKeyLocal(d), { ayahs: item.ayahs, minutes: item.minutes });
+    }
+
+    return dayKeys.map((d) => {
+      const key = dateKeyLocal(d);
+      const value = map.get(key) ?? { ayahs: 0, minutes: 0 };
+      return { date: d, ...value };
+    });
+  }, [data?.monthlyProgress]);
+
+  const monthMomentum = useMemo(() => {
+    const points = monthSeries.map((item) => {
+      const score = item.ayahs * 2 + item.minutes / 5;
+      return { ...item, score };
+    });
+    const maxScore = Math.max(1, ...points.map((p) => p.score));
+    const totalAyahs = points.reduce((sum, p) => sum + p.ayahs, 0);
+    const totalMinutes = points.reduce((sum, p) => sum + p.minutes, 0);
+    const activeDays = points.filter((p) => p.ayahs > 0 || p.minutes > 0).length;
+    return { points, maxScore, totalAyahs, totalMinutes, activeDays };
+  }, [monthSeries]);
 
   return (
     <div className="page-stack">
@@ -130,7 +200,8 @@ export function DashboardPage() {
             <p className="eyebrow">Dashboard</p>
             <h2 className="dashboard-title">Your daily accountability snapshot</h2>
             <p className="muted">
-              Today: <strong>{todayTotals.ayahs}</strong> ayahs and <strong>{todayTotals.minutes}</strong> minutes.
+              Today: <strong>{todayTotals.memorized}</strong> memorized, <strong>{todayTotals.revised}</strong> revised,{" "}
+              <strong>{todayTotals.minutes}</strong> minutes.
             </p>
           </div>
           <div className="dashboard-actions">
@@ -148,7 +219,7 @@ export function DashboardPage() {
             <div className="mini-chart-head">
               <h3>This week</h3>
               <p className="muted">
-                {weekSeries.totalAyahs} ayahs, {weekSeries.totalMinutes} mins
+                {weekTotals.memorized} memorized, {weekTotals.revised} revised, {weekTotals.minutes} mins
               </p>
             </div>
             <div className="bars">
@@ -248,10 +319,12 @@ export function DashboardPage() {
         <article className="card">
           <h3>Recent activity</h3>
           <ul className="simple-list">
-            {(data?.recentActivity ?? []).map((item) => (
+            {activityList.map((item) => (
               <li key={item.id}>
                 <span>{new Date(item.activityDate).toLocaleDateString()}</span>
-                <strong>{item.memorizedAyahs + item.revisedAyahs} ayahs</strong>
+                <strong>
+                  {item.memorizedAyahs} mem / {item.revisedAyahs} rev
+                </strong>
                 <span>{item.studyMinutes} mins</span>
               </li>
             ))}
@@ -259,21 +332,28 @@ export function DashboardPage() {
         </article>
         <article className="card">
           <h3>Momentum (last 30 days)</h3>
-          <p className="muted">A quick glance at total ayahs and time each day.</p>
-          <div className="momentum">
-            {(data?.monthlyProgress ?? []).slice(-30).map((item) => {
-              const day = new Date(item.date);
-              const intensity = Math.min(1, (item.ayahs + Math.floor(item.minutes / 10)) / 12);
+          <p className="muted">Clear daily activity bars using ayahs + study time.</p>
+          <div className="mini-chart-head">
+            <span className="muted">{monthMomentum.activeDays} active days</span>
+            <span className="muted">
+              {monthMomentum.totalAyahs} ayahs, {monthMomentum.totalMinutes} mins
+            </span>
+          </div>
+          <div className="momentum-bars">
+            {monthMomentum.points.map((item) => {
+              const height = Math.max(4, Math.round((item.score / monthMomentum.maxScore) * 100));
+              const isActive = item.ayahs > 0 || item.minutes > 0;
               return (
                 <div
-                  key={`${item.date}`}
-                  className="dot"
-                  style={{ opacity: 0.25 + intensity * 0.75 }}
-                  title={`${day.toLocaleDateString()}: ${item.ayahs} ayahs, ${item.minutes} mins`}
+                  key={dateKeyLocal(item.date)}
+                  className={`momentum-bar ${isActive ? "is-active" : ""}`}
+                  style={{ height: `${height}%` }}
+                  title={`${item.date.toLocaleDateString()}: ${item.ayahs} ayahs, ${item.minutes} mins`}
                 />
               );
             })}
           </div>
+          <p className="muted">Lower bars mean lighter days; empty days stay visible for context.</p>
         </article>
       </section>
     </div>

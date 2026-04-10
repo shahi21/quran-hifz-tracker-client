@@ -225,6 +225,7 @@ export function RegisterPage() {
                 Sign in
               </Link>
             </p>
+            <p className="auth-credit auth-credit-mobile tilt-pop2">A humble build by Shahistha Navab</p>
           </form>
         </div>
       </div>

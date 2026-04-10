@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
 
@@ -14,10 +14,25 @@ type Surah = {
 
 export function SurahsPage() {
   const [surahs, setSurahs] = useState<Surah[]>([]);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     api<Surah[]>("/surahs", { authenticated: true }).then(setSurahs).catch(() => null);
   }, []);
+
+  const filteredSurahs = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return surahs;
+
+    return surahs.filter((surah) => {
+      return (
+        surah.englishName.toLowerCase().includes(q) ||
+        surah.arabicName.toLowerCase().includes(q) ||
+        surah.revelationType.toLowerCase().includes(q) ||
+        String(surah.id).includes(q)
+      );
+    });
+  }, [surahs, query]);
 
   return (
     <div className="page-stack">
@@ -25,8 +40,20 @@ export function SurahsPage() {
         <p className="eyebrow">Surahs</p>
         <h2>All 114 surahs ready for progress tracking</h2>
       </section>
+      <section className="surah-toolbar">
+        <label className="surah-search" htmlFor="surah-search">
+          <span className="muted">Search by surah name, number, or type</span>
+          <input
+            id="surah-search"
+            type="search"
+            placeholder="e.g. Al-Baqarah, 2, Madinan"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
+      </section>
       <section className="surah-grid">
-        {surahs.map((surah) => (
+        {filteredSurahs.map((surah) => (
           <Link to={`/surahs/${surah.id}`} key={surah.id}>
             <article className="card" style={{ height: "100%" }}>
               <div className="surah-topline">
@@ -42,8 +69,8 @@ export function SurahsPage() {
             </article>
           </Link>
         ))}
+        {filteredSurahs.length === 0 ? <p className="muted">No surahs match your search.</p> : null}
       </section>
     </div>
   );
 }
-
