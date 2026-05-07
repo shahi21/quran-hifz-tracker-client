@@ -1074,6 +1074,43 @@ input:focus-visible {
   padding: 0.7rem 0.25rem;
 }
 
+.ayah-row--expanded {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1rem 0.5rem;
+}
+
+.ayah-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.ayah-text-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.ayah-arabic {
+  font-size: 1.35rem;
+  line-height: 2;
+  direction: rtl;
+  text-align: right;
+  margin: 0;
+  font-family: "Amiri", "Scheherazade New", "Traditional Arabic", serif;
+}
+
+.ayah-translation {
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--muted);
+  margin: 0;
+  font-style: italic;
+}
+
 .ayah-select {
   width: auto;
   padding: 0.55rem 0.7rem;
