@@ -4,6 +4,12 @@ import { api } from "../api/client";
 
 type AyahStatus = "NOT_STARTED" | "IN_PROGRESS" | "MEMORIZED" | "REVISED" | "WEAK";
 
+type AyahText = {
+  ayahNumber: number;
+  arabicText: string;
+  translation: string;
+};
+
 type AyahProgress = {
   ayahNumber: number;
   status: AyahStatus;
@@ -17,6 +23,7 @@ type SurahDetails = {
   arabicName: string;
   ayahCount: number;
   revelationType: string;
+  ayahs: AyahText[];
   ayahProgress: AyahProgress[];
 };
 
@@ -41,6 +48,14 @@ export function SurahDetailsPage() {
     }
     return map;
   }, [surah?.ayahProgress]);
+
+  const ayahTextMap = useMemo(() => {
+    const map = new Map<number, AyahText>();
+    for (const item of surah?.ayahs ?? []) {
+      map.set(item.ayahNumber, item);
+    }
+    return map;
+  }, [surah?.ayahs]);
 
   const progressSummary = useMemo(() => {
     let memorized = 0;
@@ -116,22 +131,31 @@ export function SurahDetailsPage() {
             {Array.from({ length: surah.ayahCount }).map((_, index) => {
               const ayahNumber = index + 1;
               const currentStatus = progressMap.get(ayahNumber)?.status ?? "NOT_STARTED";
+              const ayahData = ayahTextMap.get(ayahNumber);
 
               return (
-                <li key={ayahNumber} className="ayah-row">
-                  <strong>Ayah {ayahNumber}</strong>
-                  <select
-                    value={currentStatus}
-                    disabled={savingAyah === ayahNumber}
-                    onChange={(event) => updateStatus(ayahNumber, event.target.value as AyahStatus)}
-                    className="ayah-select"
-                  >
-                    {statusOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                <li key={ayahNumber} className="ayah-row ayah-row--expanded">
+                  <div className="ayah-row-head">
+                    <strong>Ayah {ayahNumber}</strong>
+                    <select
+                      value={currentStatus}
+                      disabled={savingAyah === ayahNumber}
+                      onChange={(event) => updateStatus(ayahNumber, event.target.value as AyahStatus)}
+                      className="ayah-select"
+                    >
+                      {statusOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {ayahData ? (
+                    <div className="ayah-text-block">
+                      <p className="ayah-arabic">{ayahData.arabicText}</p>
+                      <p className="ayah-translation">{ayahData.translation}</p>
+                    </div>
+                  ) : null}
                 </li>
               );
             })}
